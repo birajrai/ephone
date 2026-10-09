@@ -268,7 +268,9 @@ void EPhoneStream::Pump() {
   // current format; updated from header. Default 720p30 until first real frame.
   int curW = ephone::kCamW, curH = ephone::kCamH, curFps = ephone::kCamFps;
   auto validSize = [](uint32_t w, uint32_t h) {
-    return (w == 640 && h == 480) || (w == 1280 && h == 720) || (w == 1920 && h == 1080);
+    // Native phone frames: accept any even size in range, not a whitelist.
+    return w >= 320 && w <= (uint32_t)ephone::kMaxW && h >= 240 &&
+           h <= (uint32_t)ephone::kMaxH && (w % 2 == 0) && (h % 2 == 0);
   };
   while (_run.load()) {
     bool have = false;

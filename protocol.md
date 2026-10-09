@@ -8,7 +8,7 @@ Phone = server. PC connects to `ws://<phone-ip>:8080` (v1: plain TCP + JSON, upg
 - `bye` either way.
 
 ## Media v1 (simple, debuggable)
-- Video: MJPEG over HTTP `http://<phone-ip>:8081/video` (720p, q60, 15-30fps). Pro: H264/WebRTC.
+- Video: MJPEG over HTTP `http://<phone-ip>:8081/video` (phone native, q80 default, PC may request mode). Pro: H264/WebRTC.
 - Audio: Opus over TCP port 8082, 48kHz mono, 20ms frames, length-prefixed. Pro: SRTP.
 
 ## Pairing

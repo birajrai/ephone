@@ -57,13 +57,13 @@ class MainActivity : AppCompatActivity() {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, resOptions).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            setSelection(1)
+            setSelection(2) // 1080p default = original quality
         }
         fpsSpin = Spinner(this).apply {
             adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item, fpsOptions).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            setSelection(1)
+            setSelection(2) // 30fps
         }
         camBtn = Button(this).apply { setOnClickListener { toggleCam() } }
         micBtn = Button(this).apply { setOnClickListener { toggleMic() } }
@@ -100,7 +100,7 @@ class MainActivity : AppCompatActivity() {
         refresh()
     }
 
-    private fun bindCamera() {
+    private fun bindCamera(retry720: Boolean = true) {
         val fut = ProcessCameraProvider.getInstance(this)
         fut.addListener({
             val prov = fut.get()
@@ -111,7 +111,15 @@ class MainActivity : AppCompatActivity() {
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
             analysis.setAnalyzer(ContextCompat.getMainExecutor(this), CameraPipe(mjpeg))
             try { prov.bindToLifecycle(this, sel, analysis) }
-            catch (e: Exception) { camOn = false; mjpeg.stop(); status.text = "Cam busy: " + e.message }
+            catch (e: Exception) {
+                // 1080p not supported on this device: fall back to 720p once.
+                if (retry720 && (mjpeg.width != 1280 || mjpeg.height != 720)) {
+                    mjpeg.setConfig(1280, 720, mjpeg.fps, mjpeg.quality)
+                    signal.vw = 1280; signal.vh = 720
+                    runOnUiThread { syncSpinners() }
+                    bindCamera(retry720 = false)
+                } else { camOn = false; mjpeg.stop(); status.text = "Cam busy: " + e.message }
+            }
             refresh()
         }, ContextCompat.getMainExecutor(this))
     }
@@ -123,8 +131,8 @@ class MainActivity : AppCompatActivity() {
     private fun base() = "http://" + localIp() + ":8081/video"
     private fun applySpinners() {
         val wh = resOptions[resSpin.selectedItemPosition].split("x")
-        val f = fpsOptions[fpsSpin.selectedItemPosition].toIntOrNull() ?: 20
-        mjpeg.setConfig(wh[0].toInt(), wh[1].toInt(), f, 50)
+        val f = fpsOptions[fpsSpin.selectedItemPosition].toIntOrNull() ?: 30
+        mjpeg.setConfig(wh[0].toInt(), wh[1].toInt(), f, 80)
         signal.vw = mjpeg.width; signal.vh = mjpeg.height; signal.vfps = mjpeg.fps; signal.vq = mjpeg.quality
     }
     private fun syncSpinners() {

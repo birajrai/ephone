@@ -13,6 +13,7 @@ public partial class MainWindow : Window
     private MicOut? _mic;
     private EPhoneMicFeed? _ownMic;
     private FrameServer? _frames;
+    private long _lastPreviewMs;
     private readonly ObsVcam _obs = new();
 
     public MainWindow()
@@ -25,7 +26,8 @@ public partial class MainWindow : Window
 
     private (int W, int H) SelRes()
     {
-        return ResBox.SelectedIndex switch { 0 => (640, 480), 2 => (1920, 1080), _ => (1280, 720) };
+        // 0 = Original phone quality: no capture request, PC passes frames through native.
+        return ResBox.SelectedIndex switch { 1 => (640, 480), 2 => (1280, 720), 3 => (1920, 1080), _ => (0, 0) };
     }
 
     private int SelFps()
@@ -56,8 +58,8 @@ public partial class MainWindow : Window
                 Log("signal: " + await Phone.HelloAsync(Ip));
                 var (vw, vh) = SelRes();
                 int vfps = SelFps();
-                await Phone.SendVideoConfigAsync(Ip, vw, vh, vfps);
-                _frames = new FrameServer(vw, vh, vfps);
+                if (vw > 0) await Phone.SendVideoConfigAsync(Ip, vw, vh, vfps);
+                _frames = new FrameServer(vfps);
                 _frames.Open();
                 _mjpeg = new Phone.Mjpeg();
                 _mjpeg.Frame += ShowFrame;
@@ -66,21 +68,11 @@ public partial class MainWindow : Window
                 if (VcamBox.IsChecked == true)
                 {
                     if (EPhoneCam.TryStart(out var ownMsg)) Log(ownMsg);
-                    else
-                    {
-                        Log(ownMsg + ", trying OBS");
-                        try
-                        {
-                            _obs.Connect();
-                            _obs.ShowPhone(Ip);
-                            Log("vcam: OBS Virtual Camera live");
-                        }
-                        catch (Exception ex) { Log("vcam: start OBS + enable WebSocket server. " + ex.Message); }
-                    }
+                    else Log(ownMsg + " — run driver/cam/register.ps1 as admin, then restart camera");
                 }
                 CamBtn.Content = "Stop Camera";
                 var (sw, sh) = SelRes();
-                CamState.Text = $"ON {sw}x{sh}@{SelFps()}";
+                CamState.Text = sw == 0 ? $"ON original@{SelFps()}" : $"ON {sw}x{sh}@{SelFps()}";
             }
             catch (Exception ex) { Log("camera: " + ex.Message); _mjpeg = null; }
         }
@@ -95,12 +87,16 @@ public partial class MainWindow : Window
 
     private void ShowFrame(byte[] jpg)
     {
+        // Preview throttled + JPEG re-encode: PNG90 every frame pegged CPU and lagged video.
+        long now = Environment.TickCount64;
+        if (now - _lastPreviewMs < 66) return;
+        _lastPreviewMs = now;
         try
         {
             using var sk = SKBitmap.Decode(jpg);
             if (sk is null) return;
             using var img = SKImage.FromBitmap(sk);
-            using var data = img.Encode(SKEncodedImageFormat.Png, 90);
+            using var data = img.Encode(SKEncodedImageFormat.Jpeg, 70);
             var bmp = new Bitmap(data.AsStream());
             Dispatcher.UIThread.Post(() => Preview.Source = bmp);
         }

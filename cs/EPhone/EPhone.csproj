@@ -17,4 +17,9 @@
     <PackageReference Include="SkiaSharp" Version="2.88.9" />
     <PackageReference Include="PortAudioSharp" Version="0.3.0" />
   </ItemGroup>
+
+  <!-- Own virtual camera beside exe so EPhoneCam.TryStart finds it. -->
+  <Target Name="CopyEPhoneCam" AfterTargets="Build" Condition="Exists('..\..\driver\cam\x64\Release\EPhoneCam.dll')">
+    <Copy SourceFiles="..\..\driver\cam\x64\Release\EPhoneCam.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

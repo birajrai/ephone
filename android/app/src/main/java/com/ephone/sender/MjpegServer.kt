@@ -12,10 +12,10 @@ import kotlin.concurrent.thread
 class MjpegServer(private val port: Int = 8081) {
     private val latest = ArrayBlockingQueue<ByteArray>(2)
     @Volatile private var running = false
-    @Volatile var width = 1280
-    @Volatile var height = 720
-    @Volatile var fps = 20
-    @Volatile var quality = 50
+    @Volatile var width = 1920
+    @Volatile var height = 1080
+    @Volatile var fps = 30
+    @Volatile var quality = 80
     private var srv: ServerSocket? = null
 
     fun setConfig(w: Int, h: Int, f: Int, q: Int) {

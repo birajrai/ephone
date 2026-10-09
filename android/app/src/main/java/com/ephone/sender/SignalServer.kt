@@ -14,7 +14,7 @@ class SignalServer(
     @Volatile private var running = false
     private var srv: ServerSocket? = null
     // Last requested video mode, so hello reports truth instead of hardcoded 720p.
-    @Volatile var vw = 1280; @Volatile var vh = 720; @Volatile var vfps = 20; @Volatile var vq = 50
+    @Volatile var vw = 1920; @Volatile var vh = 1080; @Volatile var vfps = 30; @Volatile var vq = 80
     fun start() {
         stop()
         running = true
