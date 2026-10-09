@@ -22,6 +22,16 @@ public partial class MainWindow : Window
     }
 
     private string Ip => IpBox.Text?.Trim() ?? "";
+
+    private (int W, int H) SelRes()
+    {
+        return ResBox.SelectedIndex switch { 0 => (640, 480), 2 => (1920, 1080), _ => (1280, 720) };
+    }
+
+    private int SelFps()
+    {
+        return FpsBox.SelectedIndex switch { 0 => 15, 1 => 20, _ => 30 };
+    }
     private void Log(string m) => Dispatcher.UIThread.Post(() =>
         LogBox.Text = (LogBox.Text ?? "") + m + "\n");
 
@@ -44,7 +54,10 @@ public partial class MainWindow : Window
             try
             {
                 Log("signal: " + await Phone.HelloAsync(Ip));
-                _frames = new FrameServer();
+                var (vw, vh) = SelRes();
+                int vfps = SelFps();
+                await Phone.SendVideoConfigAsync(Ip, vw, vh, vfps);
+                _frames = new FrameServer(vw, vh, vfps);
                 _frames.Open();
                 _mjpeg = new Phone.Mjpeg();
                 _mjpeg.Frame += ShowFrame;
@@ -66,7 +79,8 @@ public partial class MainWindow : Window
                     }
                 }
                 CamBtn.Content = "Stop Camera";
-                CamState.Text = "ON";
+                var (sw, sh) = SelRes();
+                CamState.Text = $"ON {sw}x{sh}@{SelFps()}";
             }
             catch (Exception ex) { Log("camera: " + ex.Message); _mjpeg = null; }
         }

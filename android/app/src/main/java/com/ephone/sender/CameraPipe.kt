@@ -10,31 +10,44 @@ class CameraPipe(private val mjpeg: MjpegServer) : ImageAnalysis.Analyzer {
     override fun analyze(img: ImageProxy) {
         try {
             val now = System.currentTimeMillis()
-            if (now - last < 50) return // ~20fps cap, drops load + bandwidth
+            val minGap = 1000L / mjpeg.fps.coerceIn(5, 60)
+            if (now - last < minGap) return
             last = now
             val nv21 = yuv420ToNv21(img)
             if (nv21 != null) mjpeg.pushYuv(nv21, img.width, img.height)
         } catch (_: Exception) {
         } finally { img.close() }
     }
+    // Stride-safe YUV_420_888 -> NV21. Old code assumed pixelStride 1, broke on many devices.
     private fun yuv420ToNv21(img: ImageProxy): ByteArray? {
         if (img.format != android.graphics.ImageFormat.YUV_420_888) return null
-        val y = img.planes[0].buffer; val u = img.planes[1].buffer; val v = img.planes[2].buffer
         val w = img.width; val h = img.height
+        val yPlane = img.planes[0]; val uPlane = img.planes[1]; val vPlane = img.planes[2]
         val out = ByteArray(w * h * 3 / 2)
-        y.get(out, 0, w * h)
-        // VU interleave (NV21). Assumes pixelStride 1 for simplicity; rowStride handled best-effort.
-        var o = w * h
-        val uvLen = w * h / 4
-        val vb = ByteArray(uvLen); val ub = ByteArray(uvLen)
-        copyPlane(v, vb); copyPlane(u, ub)
-        for (i in 0 until uvLen) { out[o++] = vb[i]; out[o++] = ub[i] }
+        // Y row by row (rowStride may exceed w)
+        val yBuf = yPlane.buffer
+        val yRowStride = yPlane.rowStride
+        var o = 0
+        val yTmp = ByteArray(yRowStride)
+        for (row in 0 until h) {
+            yBuf.position(row * yRowStride)
+            val n = minOf(w, yBuf.remaining())
+            yBuf.get(out, o, n)
+            o += n
+        }
+        // UV: NV21 = V then U, sampled every 2x2. Honor pixelStride/rowStride.
+        val uBuf = uPlane.buffer; val vBuf = vPlane.buffer
+        val uRowStride = uPlane.rowStride; val vRowStride = vPlane.rowStride
+        val uPixStride = uPlane.pixelStride; val vPixStride = vPlane.pixelStride
+        var oo = w * h
+        for (row in 0 until h / 2) {
+            for (col in 0 until w / 2) {
+                val vu = vBuf.get(row * vRowStride + col * vPixStride)
+                val uu = uBuf.get(row * uRowStride + col * uPixStride)
+                out[oo++] = vu
+                out[oo++] = uu
+            }
+        }
         return out
-    }
-    private fun copyPlane(src: ByteBuffer, dst: ByteArray) {
-        val p = src.position()
-        val n = minOf(src.remaining(), dst.size)
-        src.get(dst, 0, n)
-        src.position(p)
     }
 }

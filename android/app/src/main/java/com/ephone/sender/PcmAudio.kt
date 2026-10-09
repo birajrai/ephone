@@ -14,9 +14,11 @@ class PcmAudio(private val port: Int = 8082) {
     @Volatile var muted = false
     @Volatile private var running = false
     private var rec: AudioRecord? = null
+    private var srv: ServerSocket? = null
 
     @SuppressLint("MissingPermission")
     fun start(): Boolean {
+        stop()
         running = true
         val sr = 16000
         val bs = AudioRecord.getMinBufferSize(sr, AudioFormat.CHANNEL_IN_MONO,
@@ -29,9 +31,10 @@ class PcmAudio(private val port: Int = 8082) {
         rec?.startRecording()
         thread(isDaemon = true, name = "pcm") {
             try {
-                ServerSocket(port).use { srv ->
+                ServerSocket(port).use { s ->
+                    srv = s
                     while (running) {
-                        val c = srv.accept()
+                        val c = try { s.accept() } catch (_: Exception) { break }
                         thread(isDaemon = true) { stream(c) }
                     }
                 }
@@ -39,7 +42,7 @@ class PcmAudio(private val port: Int = 8082) {
         }
         return true
     }
-    fun stop() { running = false; try { rec?.stop(); rec?.release() } catch (_: Exception) {} }
+    fun stop() { running = false; try { srv?.close() } catch (_: Exception) {}; srv = null; try { rec?.stop(); rec?.release() } catch (_: Exception) {}; rec = null }
 
     private fun stream(c: java.net.Socket) {
         c.use { s ->

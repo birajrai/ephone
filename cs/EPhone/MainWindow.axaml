@@ -10,6 +10,20 @@
         <TextBlock Text="Camera" FontWeight="Bold"/>
         <CheckBox Name="VcamBox" Content="Send to OBS Virtual Camera" IsChecked="True"/>
         <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="Res" VerticalAlignment="Center"/>
+          <ComboBox Name="ResBox" SelectedIndex="1" HorizontalAlignment="Stretch">
+            <ComboBoxItem Content="640x480"/>
+            <ComboBoxItem Content="1280x720"/>
+            <ComboBoxItem Content="1920x1080"/>
+          </ComboBox>
+          <TextBlock Text="FPS" VerticalAlignment="Center"/>
+          <ComboBox Name="FpsBox" SelectedIndex="2">
+            <ComboBoxItem Content="15"/>
+            <ComboBoxItem Content="20"/>
+            <ComboBoxItem Content="30"/>
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8">
           <Button Name="CamBtn" Content="Start Camera" Click="OnCam"/>
           <TextBlock Name="CamState" Text="off" VerticalAlignment="Center"/>
         </StackPanel>

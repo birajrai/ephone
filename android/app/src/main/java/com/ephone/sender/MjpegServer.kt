@@ -12,30 +12,46 @@ import kotlin.concurrent.thread
 class MjpegServer(private val port: Int = 8081) {
     private val latest = ArrayBlockingQueue<ByteArray>(2)
     @Volatile private var running = false
+    @Volatile var width = 1280
+    @Volatile var height = 720
+    @Volatile var fps = 20
+    @Volatile var quality = 50
+    private var srv: ServerSocket? = null
+
+    fun setConfig(w: Int, h: Int, f: Int, q: Int) {
+        if (w in listOf(640, 1280, 1920) && h in listOf(480, 720, 1080)) { width = w; height = h }
+        fps = f.coerceIn(5, 30)
+        quality = q.coerceIn(20, 90)
+        latest.clear()
+    }
 
     fun pushYuv(nv21: ByteArray, w: Int, h: Int) {
+        // Downscale note: CameraX already targets width x height via setTargetResolution.
+        // Encode at requested quality (lower q = less bandwidth for calls).
         val yuv = YuvImage(nv21, ImageFormat.NV21, w, h, null)
         val out = ByteArrayOutputStream(48 * 1024)
-        yuv.compressToJpeg(Rect(0, 0, w, h), 50, out) // q50: half bytes, still fine for calls
+        yuv.compressToJpeg(Rect(0, 0, w, h), quality, out)
         val jpg = out.toByteArray()
         if (latest.remainingCapacity() == 0) latest.poll()
         latest.offer(jpg)
     }
 
     fun start() {
+        stop()
         running = true
         thread(isDaemon = true, name = "mjpeg") {
             try {
-                ServerSocket(port).use { srv ->
+                ServerSocket(port).use { s ->
+                    srv = s
                     while (running) {
-                        val c = srv.accept()
+                        val c = try { s.accept() } catch (_: Exception) { break }
                         thread(isDaemon = true) { serve(c) }
                     }
                 }
             } catch (_: Exception) {}
         }
     }
-    fun stop() { running = false }
+    fun stop() { running = false; try { srv?.close() } catch (_: Exception) {}; srv = null }
 
     private fun serve(c: java.net.Socket) {
         c.use { s ->

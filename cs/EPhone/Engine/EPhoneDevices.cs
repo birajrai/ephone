@@ -5,35 +5,48 @@ using SkiaSharp;
 namespace EPhone.Engine;
 
 // Shared-mem video feeder for driver/cam/EPhoneCam.dll.
-// Layout: [CamHeader 24B][NV12 1280x720]. Writer = this. Reader = EPhoneCam PumpLoop.
+// Layout: [CamHeader 24B][NV12 up to 1920x1080]. Writer = this. Reader = EPhoneCam Pump.
 public sealed class FrameServer : IDisposable
 {
-    public const int W = 1280, H = 720, Fps = 30;
+    public static readonly (int W, int H)[] Modes = [(640, 480), (1280, 720), (1920, 1080)];
+    public static readonly int[] FpsModes = [15, 20, 30];
     public const string MapName = "Local\\EPhoneCam";
     private const int HeaderBytes = 24;
-    private const int FrameBytes = W * H * 3 / 2;
+    private const long MaxBytes = 1920L * 1080 * 3 / 2;
     private MemoryMappedFile? _mmf;
     private MemoryMappedViewAccessor? _acc;
     private ulong _frameId;
+    private long _lastPushMs;
     private bool _ready;
 
+    public int W { get; }
+    public int H { get; }
+    public int Fps { get; }
     public bool Ready => _ready;
+
+    public FrameServer(int w = 1280, int h = 720, int fps = 30)
+    {
+        W = w; H = h; Fps = Math.Clamp(fps, 5, 60);
+    }
 
     public void Open()
     {
         try
         {
-            _mmf = MemoryMappedFile.CreateOrOpen(MapName, HeaderBytes + FrameBytes);
+            Dispose();
+            _mmf = MemoryMappedFile.CreateOrOpen(MapName, HeaderBytes + MaxBytes);
             _acc = _mmf.CreateViewAccessor();
             _ready = true;
         }
         catch { _ready = false; }
     }
 
-    // Phone gives MJPEG JPEGs. Decode -> resize 720p -> NV12 -> shared mem.
+    // Phone gives MJPEG JPEGs. Decode -> resize to W/H -> NV12 -> shared mem. FPS-throttled.
     public unsafe void PushJpeg(byte[] jpg)
     {
         if (!_ready || _acc is null) return;
+        long now = Environment.TickCount64;
+        if (now - _lastPushMs < 1000 / Fps) return; // drop to target fps
         try
         {
             using var bmp = SKBitmap.Decode(jpg);
@@ -50,9 +63,10 @@ public sealed class FrameServer : IDisposable
                 if (!img.ReadPixels(info, (IntPtr)p, W * 4)) return;
             }
             // BGRA -> NV12 into stack buffer, then write to MMF
-            var nv12 = new byte[FrameBytes];
+            var nv12 = new byte[W * H * 3 / 2];
             BgraToNv12(pixels, nv12, W, H);
             _frameId++;
+            _lastPushMs = now;
             _acc.Write(0, (uint)W);
             _acc.Write(4, (uint)H);
             _acc.Write(8, (uint)Fps);

@@ -16,6 +16,25 @@ public static class Phone
         return (await r.ReadLineAsync(ct)) ?? "";
     }
 
+    // Ask phone to match our output mode (saves bandwidth). Best-effort, keeps old phones working.
+    public static async Task SendVideoConfigAsync(string ip, int w, int h, int fps, int quality = 60,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var c = new TcpClient();
+            await c.ConnectAsync(ip, 8080, ct);
+            using var s = c.GetStream();
+            using var r = new StreamReader(s, Encoding.ASCII, leaveOpen: true);
+            await r.ReadLineAsync(ct); // hello
+            var msg = $"{{\"type\":\"video\",\"width\":{w},\"height\":{h},\"fps\":{fps},\"quality\":{quality}}}\n";
+            var b = Encoding.ASCII.GetBytes(msg);
+            await s.WriteAsync(b, ct);
+            await s.FlushAsync(ct);
+        }
+        catch { }
+    }
+
     public sealed class Mjpeg : IDisposable
     {
         private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };

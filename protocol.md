@@ -16,3 +16,5 @@ Manual IP type-in first. QR + mDNS (`_ephone._tcp`) later.
 
 ## Control
 `{type:mute,bool}`, `{type:camera,facing:front|back}`, `{type:ping}` / pong for lag check.
+`{type:video,width,height,fps,quality}` PC→phone: request capture mode.
+Allowed: 640x480, 1280x720, 1920x1080 @ 5-30fps, q20-90. Phone applies + rebinds camera.

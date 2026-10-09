@@ -179,13 +179,14 @@ STDMETHODIMP EPhoneSource::QueueEvent(MediaEventType t, REFGUID g, HRESULT hr, c
   return _queue->QueueEventParamVar(t, g, hr, v);
 }
 
-HRESULT MakeVideoType(IMFMediaType** out) {
+HRESULT MakeVideoType(IMFMediaType** out, int w = ephone::kCamW, int h = ephone::kCamH,
+                       int fps = ephone::kCamFps) {
   IMFMediaType* t = nullptr;
   RETURN_IF_FAILED(MFCreateMediaType(&t));
   RETURN_IF_FAILED(t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video));
   RETURN_IF_FAILED(t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12));
-  RETURN_IF_FAILED(MFSetAttributeSize(t, MF_MT_FRAME_SIZE, ephone::kCamW, ephone::kCamH));
-  RETURN_IF_FAILED(MFSetAttributeRatio(t, MF_MT_FRAME_RATE, ephone::kCamFps, 1));
+  RETURN_IF_FAILED(MFSetAttributeSize(t, MF_MT_FRAME_SIZE, w, h));
+  RETURN_IF_FAILED(MFSetAttributeRatio(t, MF_MT_FRAME_RATE, fps, 1));
   RETURN_IF_FAILED(MFSetAttributeRatio(t, MF_MT_PIXEL_ASPECT_RATIO, 1, 1));
   RETURN_IF_FAILED(t->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive));
   RETURN_IF_FAILED(t->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE));
@@ -261,32 +262,62 @@ void EPhoneStream::Pump() {
   HANDLE map = OpenFileMappingW(FILE_MAP_READ, FALSE, ephone::kCamMap);
   const uint8_t* view = nullptr;
   if (map) view = (const uint8_t*)MapViewOfFile(map, FILE_MAP_READ, 0, 0, 0);
-  std::vector<uint8_t> buf(ephone::kCamFrameBytes);
+  std::vector<uint8_t> buf(ephone::kMaxFrameBytes);
   uint64_t lastId = 0;
   int tick = 0;
-  const LONGLONG dur = 10000000 / ephone::kCamFps;
+  // current format; updated from header. Default 720p30 until first real frame.
+  int curW = ephone::kCamW, curH = ephone::kCamH, curFps = ephone::kCamFps;
+  auto validSize = [](uint32_t w, uint32_t h) {
+    return (w == 640 && h == 480) || (w == 1280 && h == 720) || (w == 1920 && h == 1080);
+  };
   while (_run.load()) {
     bool have = false;
+    uint32_t hw = 0, hh = 0, hfps = 0;
+    size_t need = 0;
     if (view) {
       auto* hdr = (const ephone::CamHeader*)view;
-      if (hdr->width == (uint32_t)ephone::kCamW && hdr->height == (uint32_t)ephone::kCamH &&
-          hdr->frameId != 0 && hdr->frameId != lastId) {
-        lastId = hdr->frameId;
-        memcpy(buf.data(), view + sizeof(ephone::CamHeader), buf.size());
-        have = true;
+      hw = hdr->width;
+      hh = hdr->height;
+      hfps = hdr->fps;
+      if (validSize(hw, hh) && hfps >= 5 && hfps <= 60 && hdr->frameId != 0 &&
+          hdr->frameId != lastId) {
+        need = (size_t)hw * hh * 3 / 2;
+        if (need <= buf.size()) {
+          lastId = hdr->frameId;
+          memcpy(buf.data(), view + sizeof(ephone::CamHeader), need);
+          have = true;
+          // format change: new size/fps -> tell pipeline
+          if ((int)hw != curW || (int)hh != curH || (int)hfps != curFps) {
+            curW = hw;
+            curH = hh;
+            curFps = hfps ? hfps : curFps;
+            IMFMediaType* nt = nullptr;
+            if (SUCCEEDED(MakeVideoType(&nt, curW, curH, curFps))) {
+              _queue->QueueEventParamUnk(MEStreamFormatChanged, GUID_NULL, S_OK,
+                                         (IUnknown*)nt);
+              nt->Release();
+            }
+          }
+        }
       }
     }
-    if (!have) FillTestPattern(buf.data(), ephone::kCamW, ephone::kCamH, tick);
+    int w = have ? (int)hw : curW;
+    int h = have ? (int)hh : curH;
+    int fps = have && hfps ? (int)hfps : curFps;
+    if (fps < 5 || fps > 60) fps = 30;
+    size_t n = (size_t)w * h * 3 / 2;
+    if (!have) FillTestPattern(buf.data(), w, h, tick);
     tick++;
 
+    LONGLONG dur = 10000000 / fps;
     IMFMediaBuffer* mb = nullptr;
     IMFSample* sample = nullptr;
     BYTE* ptr = nullptr;
-    if (SUCCEEDED(MFCreateMemoryBuffer((DWORD)buf.size(), &mb)) &&
+    if (SUCCEEDED(MFCreateMemoryBuffer((DWORD)n, &mb)) &&
         SUCCEEDED(mb->Lock(&ptr, nullptr, nullptr))) {
-      memcpy(ptr, buf.data(), buf.size());
+      memcpy(ptr, buf.data(), n);
       mb->Unlock();
-      mb->SetCurrentLength((DWORD)buf.size());
+      mb->SetCurrentLength((DWORD)n);
       if (SUCCEEDED(MFCreateSample(&sample))) {
         sample->AddBuffer(mb);
         sample->SetSampleTime(_t.load());
@@ -297,7 +328,7 @@ void EPhoneStream::Pump() {
       }
       mb->Release();
     }
-    Sleep(1000 / ephone::kCamFps);
+    Sleep(1000 / fps);
   }
   if (view) UnmapViewOfFile(view);
   if (map) CloseHandle(map);
