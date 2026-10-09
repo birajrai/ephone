@@ -184,7 +184,7 @@ HRESULT MakeVideoType(IMFMediaType** out, int w = ephone::kCamW, int h = ephone:
   IMFMediaType* t = nullptr;
   RETURN_IF_FAILED(MFCreateMediaType(&t));
   RETURN_IF_FAILED(t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video));
-  RETURN_IF_FAILED(t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12));
+  RETURN_IF_FAILED(t->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32));
   RETURN_IF_FAILED(MFSetAttributeSize(t, MF_MT_FRAME_SIZE, w, h));
   RETURN_IF_FAILED(MFSetAttributeRatio(t, MF_MT_FRAME_RATE, fps, 1));
   RETURN_IF_FAILED(MFSetAttributeRatio(t, MF_MT_PIXEL_ASPECT_RATIO, 1, 1));
@@ -245,17 +245,26 @@ STDMETHODIMP EPhoneSource::Shutdown() {
   return S_OK;
 }
 
-void EPhoneStream::FillTestPattern(uint8_t* nv12, int w, int h, int tick) {
-  int ySize = w * h;
-  uint8_t y = (uint8_t)(16 + (tick * 2) % 200);
-  for (int i = 0; i < ySize; i++) nv12[i] = y;
-  for (int i = ySize; i < ySize + ySize / 2; i += 2) {
-    nv12[i] = 128;
-    nv12[i + 1] = 128;
+void EPhoneStream::FillTestPattern(uint8_t* bgra, int w, int h, int tick) {
+  // BGRA bottom-up: dark slate pulse + centered green bar ("alive but no phone").
+  uint8_t pulse = (uint8_t)(40 + (tick * 2) % 120);
+  for (int y = 0; y < h; y++) {
+    uint8_t* row = bgra + (size_t)(h - 1 - y) * w * 4;
+    for (int x = 0; x < w; x++) {
+      row[x * 4] = pulse / 3;
+      row[x * 4 + 1] = pulse / 2;
+      row[x * 4 + 2] = pulse / 3;
+      row[x * 4 + 3] = 255;
+    }
   }
-  // green bar so user sees "alive but no phone"
-  for (int y0 = h / 2 - 10; y0 < h / 2 + 10; y0++)
-    for (int x = 0; x < w; x++) nv12[y0 * w + x] = 200;
+  for (int y = h / 2 - 10; y < h / 2 + 10; y++)
+    for (int x = 0; x < w; x++) {
+      uint8_t* p = bgra + (size_t)(h - 1 - y) * w * 4 + (size_t)x * 4;
+      p[0] = 0;
+      p[1] = 200;
+      p[2] = 0;
+      p[3] = 255;
+    }
 }
 
 void EPhoneStream::Pump() {
@@ -268,9 +277,9 @@ void EPhoneStream::Pump() {
   // current format; updated from header. Default 720p30 until first real frame.
   int curW = ephone::kCamW, curH = ephone::kCamH, curFps = ephone::kCamFps;
   auto validSize = [](uint32_t w, uint32_t h) {
-    // Native phone frames: accept any even size in range, not a whitelist.
+    // Native phone frames: any size in range (RGB32 needs no even dims).
     return w >= 320 && w <= (uint32_t)ephone::kMaxW && h >= 240 &&
-           h <= (uint32_t)ephone::kMaxH && (w % 2 == 0) && (h % 2 == 0);
+           h <= (uint32_t)ephone::kMaxH;
   };
   while (_run.load()) {
     bool have = false;
@@ -283,7 +292,7 @@ void EPhoneStream::Pump() {
       hfps = hdr->fps;
       if (validSize(hw, hh) && hfps >= 5 && hfps <= 60 && hdr->frameId != 0 &&
           hdr->frameId != lastId) {
-        need = (size_t)hw * hh * 3 / 2;
+        need = (size_t)hw * hh * 4;
         if (need <= buf.size()) {
           lastId = hdr->frameId;
           memcpy(buf.data(), view + sizeof(ephone::CamHeader), need);

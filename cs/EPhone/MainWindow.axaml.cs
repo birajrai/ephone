@@ -32,7 +32,8 @@ public partial class MainWindow : Window
 
     private int SelFps()
     {
-        return FpsBox.SelectedIndex switch { 0 => 15, 1 => 20, _ => 30 };
+        // 0 = Original phone fps: no throttle, header carries phone-advertised rate.
+        return FpsBox.SelectedIndex switch { 1 => 15, 2 => 20, 3 => 30, _ => 0 };
     }
     private void Log(string m) => Dispatcher.UIThread.Post(() =>
         LogBox.Text = (LogBox.Text ?? "") + m + "\n");
@@ -55,11 +56,15 @@ public partial class MainWindow : Window
         {
             try
             {
-                Log("signal: " + await Phone.HelloAsync(Ip));
+                var hello = await Phone.HelloAsync(Ip);
+                Log("signal: " + hello);
+                var info = Phone.ParseHello(hello);
                 var (vw, vh) = SelRes();
                 int vfps = SelFps();
-                if (vw > 0) await Phone.SendVideoConfigAsync(Ip, vw, vh, vfps);
-                _frames = new FrameServer(vfps);
+                if (vw > 0 && vfps > 0) await Phone.SendVideoConfigAsync(Ip, vw, vh, vfps);
+                else if (vw > 0) await Phone.SendVideoConfigAsync(Ip, vw, vh, info.Fps > 0 ? info.Fps : 30);
+                int effFps = vfps > 0 ? vfps : info.Fps;
+                _frames = new FrameServer(effFps, throttle: vfps > 0);
                 _frames.Open();
                 _mjpeg = new Phone.Mjpeg();
                 _mjpeg.Frame += ShowFrame;
@@ -72,7 +77,9 @@ public partial class MainWindow : Window
                 }
                 CamBtn.Content = "Stop Camera";
                 var (sw, sh) = SelRes();
-                CamState.Text = sw == 0 ? $"ON original@{SelFps()}" : $"ON {sw}x{sh}@{SelFps()}";
+                string resTxt = sw == 0 ? "original" : $"{sw}x{sh}";
+                string fpsTxt = SelFps() == 0 ? "original" : $"{SelFps()}";
+                CamState.Text = $"ON {resTxt}@{fpsTxt}";
             }
             catch (Exception ex) { Log("camera: " + ex.Message); _mjpeg = null; }
         }

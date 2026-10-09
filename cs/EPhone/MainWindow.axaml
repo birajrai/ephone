@@ -18,7 +18,8 @@
             <ComboBoxItem Content="1920x1080"/>
           </ComboBox>
           <TextBlock Text="FPS" VerticalAlignment="Center"/>
-          <ComboBox Name="FpsBox" SelectedIndex="2">
+          <ComboBox Name="FpsBox" SelectedIndex="0">
+            <ComboBoxItem Content="Original"/>
             <ComboBoxItem Content="15"/>
             <ComboBoxItem Content="20"/>
             <ComboBoxItem Content="30"/>

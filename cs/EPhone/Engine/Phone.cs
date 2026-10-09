@@ -16,6 +16,20 @@ public static class Phone
         return (await r.ReadLineAsync(ct)) ?? "";
     }
 
+    // Phone-advertised mode from hello JSON. Missing fields -> 0 (unknown).
+    public sealed record HelloInfo(int Width, int Height, int Fps);
+    public static HelloInfo ParseHello(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            int g(string n) => r.TryGetProperty(n, out var v) && v.TryGetInt32(out var i) ? i : 0;
+            return new HelloInfo(g("width"), g("height"), g("fps"));
+        }
+        catch { return new HelloInfo(0, 0, 0); }
+    }
+
     // Ask phone to match our output mode (saves bandwidth). Best-effort, keeps old phones working.
     public static async Task SendVideoConfigAsync(string ip, int w, int h, int fps, int quality = 60,
         CancellationToken ct = default)
