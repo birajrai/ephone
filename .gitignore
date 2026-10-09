@@ -23,11 +23,6 @@ driver/**/*.aps
 *.VC.db
 *.VC.opendb
 
-# Python
-windows/__pycache__/
-*.pyc
-.venv/
-
 # OS / editor
 .vs/
 .vscode/
