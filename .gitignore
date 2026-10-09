@@ -1,0 +1,40 @@
+# SDK / toolchains (local only, huge)
+sdk/
+gradle-8.9/
+gradle.zip
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+
+# .NET
+cs/**/bin/
+cs/**/obj/
+cs/**/x64/
+cs/**/Debug/
+cs/**/Release/
+
+# C++ driver outputs
+driver/**/x64/
+driver/**/Debug/
+driver/**/Release/
+driver/**/*.user
+driver/**/*.aps
+*.VC.db
+*.VC.opendb
+
+# Python
+windows/__pycache__/
+*.pyc
+.venv/
+
+# OS / editor
+.vs/
+.vscode/
+Thumbs.db
+Desktop.ini
+
+# Secrets / local
+*.pfx
+*.cer
+*.key

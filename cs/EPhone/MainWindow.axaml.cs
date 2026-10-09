@@ -1,0 +1,149 @@
+using Avalonia.Controls;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
+using EPhone.Engine;
+using SkiaSharp;
+
+namespace EPhone;
+
+public partial class MainWindow : Window
+{
+    private Phone.Mjpeg? _mjpeg;
+    private Phone.Pcm? _pcm;
+    private MicOut? _mic;
+    private EPhoneMicFeed? _ownMic;
+    private FrameServer? _frames;
+    private readonly ObsVcam _obs = new();
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        RefreshDevices();
+    }
+
+    private string Ip => IpBox.Text?.Trim() ?? "";
+    private void Log(string m) => Dispatcher.UIThread.Post(() =>
+        LogBox.Text = (LogBox.Text ?? "") + m + "\n");
+
+    private void RefreshDevices()
+    {
+        try
+        {
+            var outs = MicOut.Outputs();
+            DevBox.ItemsSource = outs.Select(o => o.Name).ToList();
+            int cable = outs.FindIndex(o => o.Name.Contains("CABLE Input"));
+            DevBox.SelectedIndex = cable >= 0 ? cable : 0;
+        }
+        catch (Exception e) { Log("audio: " + e.Message); }
+    }
+
+    private async void OnCam(object? s, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_mjpeg is null)
+        {
+            try
+            {
+                Log("signal: " + await Phone.HelloAsync(Ip));
+                _frames = new FrameServer();
+                _frames.Open();
+                _mjpeg = new Phone.Mjpeg();
+                _mjpeg.Frame += ShowFrame;
+                _mjpeg.Frame += jpg => _frames.PushJpeg(jpg);
+                _mjpeg.Start($"http://{Ip}:8081/video");
+                if (VcamBox.IsChecked == true)
+                {
+                    if (EPhoneCam.TryStart(out var ownMsg)) Log(ownMsg);
+                    else
+                    {
+                        Log(ownMsg + ", trying OBS");
+                        try
+                        {
+                            _obs.Connect();
+                            _obs.ShowPhone(Ip);
+                            Log("vcam: OBS Virtual Camera live");
+                        }
+                        catch (Exception ex) { Log("vcam: start OBS + enable WebSocket server. " + ex.Message); }
+                    }
+                }
+                CamBtn.Content = "Stop Camera";
+                CamState.Text = "ON";
+            }
+            catch (Exception ex) { Log("camera: " + ex.Message); _mjpeg = null; }
+        }
+        else
+        {
+            _mjpeg.Dispose(); _mjpeg = null;
+            _frames?.Dispose(); _frames = null;
+            CamBtn.Content = "Start Camera";
+            CamState.Text = "off";
+        }
+    }
+
+    private void ShowFrame(byte[] jpg)
+    {
+        try
+        {
+            using var sk = SKBitmap.Decode(jpg);
+            if (sk is null) return;
+            using var img = SKImage.FromBitmap(sk);
+            using var data = img.Encode(SKEncodedImageFormat.Png, 90);
+            var bmp = new Bitmap(data.AsStream());
+            Dispatcher.UIThread.Post(() => Preview.Source = bmp);
+        }
+        catch { }
+    }
+
+    private void OnMic(object? s, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (_pcm is null)
+        {
+            try
+            {
+                // Try own driver first, fall back to VB-CABLE.
+                _ownMic = new EPhoneMicFeed();
+                if (_ownMic.Open())
+                {
+                    _pcm = new Phone.Pcm();
+                    _pcm.Chunk += c => _ownMic.Write16k(c);
+                    _pcm.Start(Ip);
+                    Log("mic: ePhone Mic driver live");
+                    MicBtn.Content = "Stop Mic";
+                    MicState.Text = "ON -> ePhone Mic";
+                    return;
+                }
+                _ownMic.Dispose(); _ownMic = null;
+                var outs = MicOut.Outputs();
+                int sel = DevBox.SelectedIndex;
+                if (sel < 0 || sel >= outs.Count) { Log("mic: pick output first"); return; }
+                _mic = new MicOut();
+                _mic.Open(outs[sel].Index);
+                _pcm = new Phone.Pcm();
+                _pcm.Chunk += c => _mic.Write(c);
+                _pcm.Start(Ip);
+                MicBtn.Content = "Stop Mic";
+                MicState.Text = "ON -> " + outs[sel].Name;
+            }
+            catch (Exception ex) { Log("mic: " + ex.Message); _pcm = null; }
+        }
+        else
+        {
+            _pcm.Dispose(); _pcm = null;
+            _mic?.Dispose(); _mic = null;
+            _ownMic?.Dispose(); _ownMic = null;
+            MicBtn.Content = "Start Mic";
+            MicState.Text = "off";
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _mjpeg?.Dispose();
+        _pcm?.Dispose();
+        _mic?.Dispose();
+        _ownMic?.Dispose();
+        _frames?.Dispose();
+        try { _obs.Stop(); } catch { }
+        _obs.Dispose();
+        base.OnClosed(e);
+    }
+}

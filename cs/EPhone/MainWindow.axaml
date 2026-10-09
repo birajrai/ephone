@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="EPhone.MainWindow"
+        Title="ePhone" Width="460" Height="620">
+  <StackPanel Margin="12" Spacing="8">
+    <TextBlock Text="Phone IP"/>
+    <TextBox Name="IpBox" Text="192.168.254.16"/>
+    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="6">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Camera" FontWeight="Bold"/>
+        <CheckBox Name="VcamBox" Content="Send to OBS Virtual Camera" IsChecked="True"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Name="CamBtn" Content="Start Camera" Click="OnCam"/>
+          <TextBlock Name="CamState" Text="off" VerticalAlignment="Center"/>
+        </StackPanel>
+        <Image Name="Preview" Height="240" Stretch="Uniform"/>
+      </StackPanel>
+    </Border>
+    <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Padding="6">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Mic" FontWeight="Bold"/>
+        <TextBlock Text="Output (CABLE Input for Zoom/Discord)"/>
+        <ComboBox Name="DevBox" HorizontalAlignment="Stretch"/>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Name="MicBtn" Content="Start Mic" Click="OnMic"/>
+          <TextBlock Name="MicState" Text="off" VerticalAlignment="Center"/>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+    <TextBox Name="LogBox" Height="140" IsReadOnly="True" TextWrapping="Wrap"/>
+  </StackPanel>
+</Window>
