@@ -38,3 +38,7 @@ Desktop.ini
 *.pfx
 *.cer
 *.key
+
+# Third-party redist (proprietary, local only)
+windows/VBCABLE/
+windows/VBCABLE.zip
